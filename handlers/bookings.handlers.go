@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	. "booking-api/types"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"strings"
@@ -74,7 +75,8 @@ func CreateBooking(c echo.Context) (err error) {
 		return echo.NewHTTPError(http.StatusBadRequest, "The dates must be the same")
 	}
 
-	return c.JSON(http.StatusOK, body)
+	user := c.Get("user").(*UserJwtClaims)
+	return c.JSON(http.StatusOK, user)
 }
 
 func DeleteBooking(c echo.Context) error {
