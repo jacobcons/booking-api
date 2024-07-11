@@ -22,7 +22,7 @@ func main() {
 	// wipe existing data
 	DB.MustExec(`TRUNCATE TABLE "user" CASCADE`)
 
-	// seed with fresh data
+	// seed.exe with fresh data
 	id1 := "3a39d390-ec5a-4795-b584-ca51ecd73c28"
 	id2 := "48457cf0-7411-4b3f-87da-78ddcae82589"
 	jwt1 := createJwt(jwt.MapClaims{
