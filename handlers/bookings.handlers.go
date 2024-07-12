@@ -10,10 +10,10 @@ import (
 )
 
 type Booking struct {
-	Id        string `json:"id"`
-	UserId    string `json:"userId"`
-	StartDate string `json:"startDate"`
-	EndDate   string `json:"endDate"`
+	Id            string `json:"id"`
+	UserId        string `json:"userId"`
+	StartDatetime string `json:"startDateTime"`
+	EndDatetime   string `json:"endDateTime"`
 }
 
 func GetBookings(c echo.Context) error {
@@ -57,8 +57,8 @@ func isValidBookingDate(datetimeStr string) bool {
 
 func CreateBooking(c echo.Context) (err error) {
 	type Body struct {
-		StartDateTime string `validate:"required,datetime=2006-01-02 15:04:05"`
-		EndDateTime   string `validate:"required,datetime=2006-01-02 15:04:05"`
+		StartDatetime string `validate:"required,datetime=2006-01-02 15:04:05"`
+		EndDatetime   string `validate:"required,datetime=2006-01-02 15:04:05"`
 	}
 
 	// load body into struct
@@ -71,38 +71,47 @@ func CreateBooking(c echo.Context) (err error) {
 	if err = c.Validate(body); err != nil {
 		return err
 	}
-	if !isValidBookingDate(body.StartDateTime) || !isValidBookingDate(body.EndDateTime) {
+	startDatetime, endDatetime := body.StartDatetime, body.EndDatetime
+	if !isValidBookingDate(startDatetime) || !isValidBookingDate(endDatetime) {
 		return echo.NewHTTPError(http.StatusBadRequest, "The datetimes must be on a weekday, between 9am-5pm, on the hour and in the future")
 	}
-	if body.EndDateTime <= body.StartDateTime {
+	if endDatetime <= startDatetime {
 		return echo.NewHTTPError(http.StatusBadRequest, "endDateTime must be greater than startDateTime")
 	}
-	startDate := strings.Split(body.StartDateTime, " ")[0]
-	endDate := strings.Split(body.EndDateTime, " ")[0]
+	startDate := strings.Split(startDatetime, " ")[0]
+	endDate := strings.Split(endDatetime, " ")[0]
 	if startDate != endDate {
 		return echo.NewHTTPError(http.StatusBadRequest, "The dates must be the same")
 	}
 
+	// extract userId from jwt
 	userId := c.Get("user").(*UserJwtClaims).Id
+	// run queries in transaction to prevent race conditions
 	tx := DB.MustBegin()
-	//var isOverlap bool
-	//DB.Get(
-	//	isOverlap,
-	//	`
-	//		SELECT id
-	//		FROM booking
-	//		WHERE
-	//	`)
-	newBooking := Booking{}
-	err = tx.QueryRowx(
-		`INSERT INTO booking(user_id, start_date, end_date) VALUES ($1, $2, $3) RETURNING *`,
-		userId, body.StartDateTime, body.EndDateTime,
-	).StructScan(&newBooking)
-	if err != nil {
-		tx.Rollback()
-		return err
+	// ensure booking doesn't overlap with existing bookings
+	var isOverlap bool
+	_ = DB.Get(
+		&isOverlap,
+		`
+			SELECT EXISTS (
+				SELECT 1
+				FROM booking
+				WHERE (start_datetime, end_datetime) OVERLAPS ($1, $2) 
+			)
+		`,
+		startDatetime, endDatetime,
+	)
+	if isOverlap {
+		return echo.NewHTTPError(http.StatusConflict, "booking must not overlap with existing bookings")
 	}
+	// insert new booking
+	newBooking := Booking{}
+	_ = tx.QueryRowx(
+		`INSERT INTO booking(user_id, start_datetime, end_datetime) VALUES ($1, $2, $3) RETURNING *`,
+		userId, startDatetime, endDatetime,
+	).StructScan(&newBooking)
 	_ = tx.Commit()
+
 	return c.JSON(http.StatusOK, newBooking)
 }
 

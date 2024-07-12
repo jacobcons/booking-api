@@ -1,7 +1,6 @@
 package main
 
 import (
-	. "booking-api"
 	. "booking-api/db"
 	. "booking-api/types"
 	"github.com/golang-jwt/jwt/v5"
