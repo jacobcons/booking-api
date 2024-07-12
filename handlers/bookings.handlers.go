@@ -3,6 +3,7 @@ package handlers
 import (
 	. "booking-api/db"
 	. "booking-api/types"
+	"fmt"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"strings"
@@ -33,7 +34,9 @@ func GetBookings(c echo.Context) (err error) {
 		return err
 	}
 
+	// get all bookings between the start and end datetimes
 	startDatetime, endDatetime := queryParams.StartDatetime, queryParams.EndDatetime
+
 	bookings := []Booking{}
 	DB.Select(
 		&bookings,
@@ -45,6 +48,7 @@ func GetBookings(c echo.Context) (err error) {
 		`,
 		startDatetime, endDatetime,
 	)
+
 	return c.JSON(http.StatusOK, bookings)
 }
 
@@ -99,21 +103,25 @@ func CreateBooking(c echo.Context) (err error) {
 	if err = c.Validate(body); err != nil {
 		return err
 	}
+
 	startDatetime, endDatetime := body.StartDatetime, body.EndDatetime
 	if !isValidBookingDate(startDatetime) || !isValidBookingDate(endDatetime) {
 		return echo.NewHTTPError(http.StatusBadRequest, "The datetimes must be on a weekday, between 9am-5pm, on the hour and in the future")
 	}
+
 	if endDatetime <= startDatetime {
 		return echo.NewHTTPError(http.StatusBadRequest, "endDateTime must be greater than startDateTime")
 	}
+
 	startDate := strings.Split(startDatetime, "T")[0]
 	endDate := strings.Split(endDatetime, "T")[0]
 	if startDate != endDate {
 		return echo.NewHTTPError(http.StatusBadRequest, "The dates must be the same")
 	}
 
-	// extract userId from jwt
+	// create booking as long as it doesn't overlap with existing bookings
 	userId := c.Get("user").(*UserJwtClaims).Id
+
 	// run queries in transaction to prevent race conditions
 	tx := DB.MustBegin()
 	// ensure booking doesn't overlap with existing bookings
@@ -132,7 +140,7 @@ func CreateBooking(c echo.Context) (err error) {
 	if isOverlap {
 		return echo.NewHTTPError(http.StatusConflict, "booking must not overlap with existing bookings")
 	}
-	// insert new booking
+	// insert booking
 	newBooking := Booking{}
 	_ = tx.QueryRowx(
 		`INSERT INTO booking(user_id, start_datetime, end_datetime) VALUES ($1, $2, $3) RETURNING *`,
@@ -143,6 +151,30 @@ func CreateBooking(c echo.Context) (err error) {
 	return c.JSON(http.StatusCreated, newBooking)
 }
 
-func DeleteBooking(c echo.Context) error {
-	return c.String(http.StatusOK, "del")
+func DeleteBooking(c echo.Context) (err error) {
+	type Params struct {
+		Id string `param:"id" validate:"required,uuid"`
+	}
+
+	// load params into struct
+	params := new(Params)
+	if err = c.Bind(params); err != nil {
+		return err
+	}
+
+	// validation
+	if err = c.Validate(params); err != nil {
+		return err
+	}
+
+	// delete booking with id route param belonging to the logged-in user
+	id := params.Id
+	userId := c.Get("user").(*UserJwtClaims).Id
+
+	rowsDeleted, _ := DB.MustExec(`DELETE FROM booking WHERE id = $1 AND user_id = $2`, id, userId).RowsAffected()
+	if rowsDeleted == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, fmt.Sprintf("No booking<%v> belonging to user<%v> found", id, userId))
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }
