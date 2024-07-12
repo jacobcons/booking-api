@@ -16,12 +16,40 @@ type Booking struct {
 	EndDatetime   string `json:"endDateTime"`
 }
 
-func GetBookings(c echo.Context) error {
-	return c.String(http.StatusOK, "get")
+func GetBookings(c echo.Context) (err error) {
+	type QueryParams struct {
+		StartDatetime string `query:"startDatetime" validate:"required,datetime=2006-01-02T15:04:05Z"`
+		EndDatetime   string `query:"endDatetime" validate:"required,datetime=2006-01-02T15:04:05Z"`
+	}
+
+	// load query params into struct
+	queryParams := new(QueryParams)
+	if err = c.Bind(queryParams); err != nil {
+		return err
+	}
+
+	// validation
+	if err = c.Validate(queryParams); err != nil {
+		return err
+	}
+
+	startDatetime, endDatetime := queryParams.StartDatetime, queryParams.EndDatetime
+	bookings := []Booking{}
+	DB.Select(
+		&bookings,
+		`
+			SELECT *
+			FROM booking b
+			WHERE start_datetime >= $1 AND end_datetime <= $2
+			ORDER BY start_datetime
+		`,
+		startDatetime, endDatetime,
+	)
+	return c.JSON(http.StatusOK, bookings)
 }
 
 func isValidBookingDate(datetimeStr string) bool {
-	const DATETIME_FORMAT = "2006-01-02 15:04:05"
+	const DATETIME_FORMAT = "2006-01-02T15:04:05Z"
 	const TIME_FORMAT = "15:04:05"
 	datetime, _ := time.Parse(DATETIME_FORMAT, datetimeStr)
 	weekday := datetime.Weekday()
@@ -57,8 +85,8 @@ func isValidBookingDate(datetimeStr string) bool {
 
 func CreateBooking(c echo.Context) (err error) {
 	type Body struct {
-		StartDatetime string `validate:"required,datetime=2006-01-02 15:04:05"`
-		EndDatetime   string `validate:"required,datetime=2006-01-02 15:04:05"`
+		StartDatetime string `validate:"required,datetime=2006-01-02T15:04:05Z"`
+		EndDatetime   string `validate:"required,datetime=2006-01-02T15:04:05Z"`
 	}
 
 	// load body into struct
@@ -78,8 +106,8 @@ func CreateBooking(c echo.Context) (err error) {
 	if endDatetime <= startDatetime {
 		return echo.NewHTTPError(http.StatusBadRequest, "endDateTime must be greater than startDateTime")
 	}
-	startDate := strings.Split(startDatetime, " ")[0]
-	endDate := strings.Split(endDatetime, " ")[0]
+	startDate := strings.Split(startDatetime, "T")[0]
+	endDate := strings.Split(endDatetime, "T")[0]
 	if startDate != endDate {
 		return echo.NewHTTPError(http.StatusBadRequest, "The dates must be the same")
 	}
@@ -112,7 +140,7 @@ func CreateBooking(c echo.Context) (err error) {
 	).StructScan(&newBooking)
 	_ = tx.Commit()
 
-	return c.JSON(http.StatusOK, newBooking)
+	return c.JSON(http.StatusCreated, newBooking)
 }
 
 func DeleteBooking(c echo.Context) error {
