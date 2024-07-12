@@ -1,7 +1,6 @@
 # booking-api 
 
-REST API that handles bookings written in Go
-(note: the folder structure is a bit convoluted because I wanted to test how I'd structure a larger project)
+REST API that handles bookings (note: the folder structure is a bit convoluted because I wanted to test how I'd structure a larger project)
 
 ### Running locally -
 1. Install go modules `go mod download`
