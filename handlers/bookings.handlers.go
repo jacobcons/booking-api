@@ -1,12 +1,20 @@
 package handlers
 
 import (
+	. "booking-api/db"
 	. "booking-api/types"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"strings"
 	"time"
 )
+
+type Booking struct {
+	Id        string `json:"id"`
+	UserId    string `json:"userId"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+}
 
 func GetBookings(c echo.Context) error {
 	return c.String(http.StatusOK, "get")
@@ -75,8 +83,27 @@ func CreateBooking(c echo.Context) (err error) {
 		return echo.NewHTTPError(http.StatusBadRequest, "The dates must be the same")
 	}
 
-	user := c.Get("user").(*UserJwtClaims)
-	return c.JSON(http.StatusOK, user)
+	userId := c.Get("user").(*UserJwtClaims).Id
+	tx := DB.MustBegin()
+	//var isOverlap bool
+	//DB.Get(
+	//	isOverlap,
+	//	`
+	//		SELECT id
+	//		FROM booking
+	//		WHERE
+	//	`)
+	newBooking := Booking{}
+	err = tx.QueryRowx(
+		`INSERT INTO booking(user_id, start_date, end_date) VALUES ($1, $2, $3) RETURNING *`,
+		userId, body.StartDateTime, body.EndDateTime,
+	).StructScan(&newBooking)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	_ = tx.Commit()
+	return c.JSON(http.StatusOK, newBooking)
 }
 
 func DeleteBooking(c echo.Context) error {

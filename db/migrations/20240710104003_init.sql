@@ -7,8 +7,8 @@ CREATE TABLE "user" (
 CREATE TABLE booking (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES "user"(id),
-  startDate TIMESTAMP NOT NULL,
-  endDate TIMESTAMP NOT NULL
+  start_date TIMESTAMP NOT NULL,
+  end_date TIMESTAMP NOT NULL
 );
 
 -- +goose Down
